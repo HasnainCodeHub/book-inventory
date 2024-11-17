@@ -2,189 +2,298 @@
 
 import { useState, useEffect } from "react";
 
-// Define types for the Book object
 type Book = {
   id: number;
   title: string;
   author: string;
   price: number;
+  imageUrl?: string;
 };
 
 export default function BooksPage() {
-  const [books, setBooks] = useState<Book[]>([]); // Type the books state as an array of Book
-  const [title, setTitle] = useState<string>(""); // Type the title state as string
-  const [author, setAuthor] = useState<string>(""); // Type the author state as string
-  const [price, setPrice] = useState<string>(""); // Type the price state as string (since input is text)
-  const [editId, setEditId] = useState<number | null>(null); // Allow editId to be number or null
-  const [error, setError] = useState<string>(""); // Type the error state as string
+  const [books, setBooks] = useState<Book[]>([]);
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [error, setError] = useState<string>("");
+  const [newBook, setNewBook] = useState<Book>({
+    id: 0,
+    title: "",
+    author: "",
+    price: 0,
+    imageUrl: "",
+  });
+  const [image, setImage] = useState<File | null>(null);
 
   useEffect(() => {
     fetch("/api/books")
       .then((res) => res.json())
-      .then((data) => setBooks(data));
+      .then((data: Book[]) => setBooks(data))
+      .catch((err) => {
+        setError("Failed to load books");
+        console.error(err);
+      });
   }, []);
 
-  // Validate inputs before submitting
-  const validateInputs = (): boolean => {
-    if (!title || !author || !price) {
-      setError("Please fill in all fields: Title, Author, and Price.");
-      return false;
-    }
-    setError(""); // Clear error if all fields are filled
-    return true;
+  const handleEdit = (book: Book) => {
+    setEditingBook(book);
   };
 
-  // Add a new book
-  const addBook = () => {
-    if (!validateInputs()) return; // Only proceed if inputs are valid
-
-    fetch("/api/books", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, author, price: parseFloat(price) }), // Send price as a number
-    })
-      .then((res) => res.json())
-      .then((newBook: Book) => {
-        setBooks([...books, newBook]);
-        setTitle("");
-        setAuthor("");
-        setPrice(""); // Reset price
+  const handleDelete = async (id: number) => {
+    try {
+      const response = await fetch(`/api/books?id=${id}`, {
+        method: "DELETE",
       });
+
+      if (response.ok) {
+        setBooks((prevBooks) => prevBooks.filter((book) => book.id !== id));
+      } else {
+        console.error("Failed to delete book");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+    }
   };
 
-  // Update an existing book
-  const updateBook = () => {
-    if (!validateInputs()) return; // Only proceed if inputs are valid
+  const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-    fetch("/api/books", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editId, title, author, price: parseFloat(price) }), // Send price as a number
-    })
-      .then((res) => res.json())
-      .then((updatedBook: Book) => {
-        setBooks(
-          books.map((book) =>
+    if (!editingBook) return;
+
+    const formData = new FormData(e.currentTarget);
+    try {
+      const response = await fetch("/api/books", {
+        method: "PUT",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const updatedBook = await response.json();
+        setBooks((prevBooks) =>
+          prevBooks.map((book) =>
             book.id === updatedBook.id ? updatedBook : book
           )
         );
-        setEditId(null);
-        setTitle("");
-        setAuthor("");
-        setPrice(""); // Reset price
-      });
+        setEditingBook(null);
+      } else {
+        console.error("Failed to update book");
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  // Delete a book
-  const deleteBook = (id: number) => {
-    fetch("/api/books", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    }).then(() => {
-      setBooks(books.filter((book) => book.id !== id));
-    });
+  const handleAddSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    formData.append("title", newBook.title);
+    formData.append("author", newBook.author);
+    formData.append("price", newBook.price.toString());
+    if (image) {
+      formData.append("image", image);
+    }
+
+    try {
+      const response = await fetch("/api/books", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const addedBook = await response.json();
+        setBooks((prevBooks) => [...prevBooks, addedBook]);
+        setNewBook({
+          id: 0,
+          title: "",
+          author: "",
+          price: 0,
+          imageUrl: "",
+        });
+        setImage(null);
+      } else {
+        console.error("Failed to add book");
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6">Books Inventory</h1>
+    <div className="p-8 bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 min-h-screen">
+      <h1 className="text-4xl font-extrabold mb-6 text-center text-white animate-pulse">
+        Books Inventory
+      </h1>
 
-      {/* Error Message */}
-      {error && <p className="text-red-500 mb-4">{error}</p>}
+      {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
 
-      {/* Form to Add/Edit Books */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
-        <input
-          type="text"
-          placeholder="Title"
-          className="border rounded p-2 w-full sm:w-1/3"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="Author"
-          className="border rounded p-2 w-full sm:w-1/3"
-          value={author}
-          onChange={(e) => setAuthor(e.target.value)}
-        />
-        <input
-          type="number"
-          placeholder="Price"
-          className="border rounded p-2 w-full sm:w-1/3"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
-        {editId ? (
+      {/* Add New Book Form */}
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold mb-4 text-center text-white">
+          Add New Book
+        </h2>
+        <form
+          onSubmit={handleAddSubmit}
+          className="bg-white p-6 rounded-lg shadow-lg max-w-sm mx-auto"
+        >
+          <div className="mb-4 text-black font-bold">
+            <label className="block mb-1">Title</label>
+            <input
+              type="text"
+              value={newBook.title}
+              onChange={(e) =>
+                setNewBook({ ...newBook, title: e.target.value })
+              }
+              className="w-full p-2 border rounded"
+              required
+            />
+          </div>
+          <div className="mb-4 text-black font-bold">
+            <label className="block mb-1">Author</label>
+            <input
+              type="text"
+              value={newBook.author}
+              onChange={(e) =>
+                setNewBook({ ...newBook, author: e.target.value })
+              }
+              className="w-full p-2 border rounded"
+              required
+            />
+          </div>
+          <div className="mb-4 text-black font-bold">
+            <label className="block mb-1">Price</label>
+            <input
+              type="number"
+              value={newBook.price}
+              onChange={(e) =>
+                setNewBook({ ...newBook, price: parseFloat(e.target.value) })
+              }
+              className="w-full p-2 border rounded"
+              required
+            />
+          </div>
+          <div className="mb-4 text-black font-bold">
+            <label className="block mb-1">Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImage(e.target.files?.[0] || null)}
+              className="w-full p-2 border rounded"
+            />
+          </div>
           <button
-            onClick={updateBook}
-            className="bg-blue-500 text-white px-4 py-2 rounded mt-4 sm:mt-0 sm:w-1/4"
-          >
-            Update Book
-          </button>
-        ) : (
-          <button
-            onClick={addBook}
-            className="bg-green-500 text-white px-4 py-2 rounded mt-4 sm:mt-0 sm:w-1/4"
+            type="submit"
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
           >
             Add Book
           </button>
+        </form>
+      </div>
+
+      {/* Available Books */}
+      <div>
+        <h2 className="text-2xl font-semibold mb-4 text-center text-white">
+          Available Books
+        </h2>
+        {books.length === 0 ? (
+          <p className="text-center text-white animate-bounce">
+            No books available
+          </p>
+        ) : (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            {books.map((book) => (
+              <li
+                key={book.id}
+                className="p-4 bg-white text-gray-800 rounded-lg shadow-lg transform hover:scale-105 hover:shadow-2xl transition-all duration-300"
+              >
+                {book.imageUrl && (
+                  <div className="relative w-full h-40 bg-gray-200 rounded mb-2 overflow-hidden">
+                    <img
+                      src={book.imageUrl}
+                      alt={book.title}
+                      className="absolute top-0 left-0 w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+                <div>
+                  <p className="font-bold text-lg">{book.title}</p>
+                  <p>By {book.author}</p>
+                  <p className="text-purple-600 font-semibold">
+                    ${book.price.toFixed(2)}
+                  </p>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleEdit(book)}
+                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(book.id)}
+                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Display List of Books */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {books.map((book) => (
-          <div
-            key={book.id}
-            className="border rounded p-4 shadow-md flex flex-col gap-4"
+      {/* Edit Book Modal */}
+      {editingBook && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+          <form
+            className="bg-white p-6 rounded-lg shadow-lg"
+            onSubmit={handleEditSubmit}
           >
-            <div>
-              <h2 className="text-xl font-bold">{book.title}</h2>
-              <p className="text-gray-600">by {book.author}</p>
-              <p className="text-gray-800 font-semibold">${book.price}</p> {/* Display Price */}
+            <h3 className="text-xl font-semibold mb-4 text-black">Edit Book</h3>
+            <input type="hidden" name="id" value={editingBook.id} />
+            <div className="mb-4">
+              <label className="block mb-1">Title</label>
+              <input
+                type="text"
+                name="title"
+                defaultValue={editingBook.title}
+                className="w-full p-2 border rounded"
+              />
             </div>
-            <div className="flex flex-wrap gap-4">
+            <div className="mb-4">
+              <label className="block mb-1">Author</label>
+              <input
+                type="text"
+                name="author"
+                defaultValue={editingBook.author}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block mb-1">Price</label>
+              <input
+                type="number"
+                name="price"
+                defaultValue={editingBook.price}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div className="flex justify-end gap-4">
               <button
-                onClick={() => {
-                  setEditId(book.id);
-                  setTitle(book.title);
-                  setAuthor(book.author);
-                  setPrice(book.price.toString()); // Set price for editing, ensure it's a string
-                }}
-                className="bg-yellow-500 text-white px-3 py-2 rounded w-full sm:w-auto"
+                type="button"
+                onClick={() => setEditingBook(null)}
+                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
               >
-                Edit
+                Cancel
               </button>
               <button
-                onClick={() => deleteBook(book.id)}
-                className="bg-red-500 text-white px-3 py-2 rounded w-full sm:w-auto"
+                type="submit"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
-                Delete
-              </button>
-              <button className="bg-indigo-500 text-white px-3 py-2 rounded w-full sm:w-auto">
-                Add to Cart
+                Save
               </button>
             </div>
-          </div>
-        ))}
-      </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
